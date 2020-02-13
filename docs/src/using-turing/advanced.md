@@ -218,28 +218,33 @@ using Distributed
 addprocs(4)
 @everywhere using Turing, Random
 
-# Set the progress to false to avoid too many notifications.
-@everywhere turnprogress(false)
-
 # Set a different seed for each process.
 for i in procs()
-    @fetch @spawnat i Random.seed!(rand(Int64))
+    fetch(@spawnat i Random.seed!(abs(rand(Int))))
 end
 
-# Define the model using @everywhere.
-@everywhere @model gdemo(x) = begin
-    s ~ InverseGamma(2, 3)
-    m ~ Normal(0, sqrt(s))
-    for i in eachindex(x)
-        x[i] ~ Normal(m, sqrt(s))
+@everywhere begin
+    # Set the progress to false to avoid too many notifications.
+    turnprogress(false)
+
+    # Define the model.
+    @model gdemo(x) = begin
+        s ~ InverseGamma(2, 3)
+	m ~ Normal(0, sqrt(s))
+	for i in eachindex(x)
+	    x[i] ~ Normal(m, sqrt(s))
+	end
     end
+
+    # Sampling setup.
+    alg = NUTS(0.65)
+    model = gdemo([1.2, 3.5])
+    chn = sample(model, alg, 100, save_state = false)
 end
 
-# Sampling setup.
-num_chains = 4
-sampler = NUTS(0.65)
-model = gdemo([1.2, 3.5]
+chns = mapreduce(chainscat, procs()) do i
+    fetch(@spawnat i chn)
+end
 
-# Run all samples.
-chns = reduce(chainscat, pmap(x->sample(model, sampler, 1000), 1:num_chains))
+describe(chns)
 ```
